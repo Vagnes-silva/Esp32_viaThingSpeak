@@ -191,124 +191,123 @@
         </div>
     </div>
 
-    <script>
-        // 🔐 CONFIGURAÇÃO: COLE SUA WRITE API KEY AQUI
-        const API_KEY = '7RQMS5WSCKA174C8'; // SUBSTITUA PELA SUA CHAVE REAL!
-        const LED_STATUS_FIELD = 1; // Field onde o ESP32 envia o estado (apenas para visualização)
-        const COMMAND_FIELD = 2;    // Field onde este painel envia comandos
+   <script>
+    // 🔐 CONFIGURAÇÃO
+    const API_KEY = '7RQMS5WSCKA174C8'; // SUA WRITE API KEY
+    const CHANNEL_ID = '3202053'; // SEU CHANNEL ID
+    const COMMAND_FIELD = 1; // Vamos usar Field 1 para tudo
 
-        // Estado atual do LED (assumimos que começa desligado)
-        let currentLedState = 0;
-        let lastCommandTime = 0;
-        const COMMAND_COOLDOWN = 16000; // 16 segundos para garantir
+    // Estado atual
+    let currentLedState = 0;
+    let lastCommandTime = 0;
+    const COMMAND_COOLDOWN = 16000;
 
-        // Elementos da interface
-        const ledIcon = document.getElementById('ledIcon');
-        const statusText = document.getElementById('statusText');
-        const statusMessage = document.getElementById('statusMessage');
-        const btnOn = document.getElementById('btnOn');
-        const btnOff = document.getElementById('btnOff');
+    // Elementos
+    const ledIcon = document.getElementById('ledIcon');
+    const statusText = document.getElementById('statusText');
+    const statusMessage = document.getElementById('statusMessage');
+    const btnOn = document.getElementById('btnOn');
+    const btnOff = document.getElementById('btnOff');
 
-        // Função para atualizar a aparência do LED na interface
-        function updateLedVisual(state) {
-            if(state === 1) {
-                ledIcon.className = 'led-icon led-on';
-                ledIcon.innerHTML = '<i class="fas fa-lightbulb"></i>';
-                statusText.textContent = 'LED: LIGADO';
-            } else {
-                ledIcon.className = 'led-icon led-off';
-                ledIcon.innerHTML = '<i class="fas fa-lightbulb"></i>';
-                statusText.textContent = 'LED: DESLIGADO';
-            }
-            currentLedState = state;
+    // Atualiza aparência do LED
+    function updateLedVisual(state) {
+        if(state === 1) {
+            ledIcon.className = 'led-icon led-on';
+            statusText.textContent = 'LED: LIGADO';
+        } else {
+            ledIcon.className = 'led-icon led-off';
+            statusText.textContent = 'LED: DESLIGADO';
         }
+        currentLedState = state;
+    }
 
-        // Função principal para enviar comandos
-        async function sendCommand(command) {
-            // Verifica cooldown (limite do ThingSpeak)
-            const now = Date.now();
-            if(now - lastCommandTime < COMMAND_COOLDOWN) {
-                const secondsLeft = Math.ceil((COMMAND_COOLDOWN - (now - lastCommandTime)) / 1000);
-                statusMessage.textContent = `⏳ Aguarde ${secondsLeft} segundos antes de outro comando`;
-                statusMessage.className = 'status-message status-waiting';
-                return;
-            }
-
-            // Atualiza interface durante o envio
-            statusMessage.textContent = '⏳ Enviando comando para o ESP32...';
+    // Envia comando para o ESP32
+    async function sendCommand(command) {
+        const now = Date.now();
+        if(now - lastCommandTime < COMMAND_COOLDOWN) {
+            const secondsLeft = Math.ceil((COMMAND_COOLDOWN - (now - lastCommandTime)) / 1000);
+            statusMessage.textContent = `⏳ Aguarde ${secondsLeft}s (limite ThingSpeak: 15s)`;
             statusMessage.className = 'status-message status-waiting';
-            btnOn.disabled = true;
-            btnOff.disabled = true;
+            return;
+        }
 
-            // Constrói a URL para o ThingSpeak
-            const url = `https://api.thingspeak.com/update?api_key=${API_KEY}&field${COMMAND_FIELD}=${command}`;
+        // Atualiza interface
+        statusMessage.textContent = '⏳ Enviando comando...';
+        statusMessage.className = 'status-message status-waiting';
+        btnOn.disabled = true;
+        btnOff.disabled = true;
 
-            try {
-                // Envia o comando
-                const response = await fetch(url);
-                const data = await response.text();
-                const entryId = parseInt(data.trim());
+        // URL para o ThingSpeak - Field 1
+        const url = `https://api.thingspeak.com/update?api_key=${API_KEY}&field1=${command}`;
 
-                // Processa a resposta
-                setTimeout(() => {
-                    if(entryId > 0) {
-                        // Sucesso!
-                        statusMessage.textContent = command === 1 
-                            ? '✅ Comando LIGAR enviado com sucesso!' 
-                            : '✅ Comando DESLIGAR enviado com sucesso!';
-                        statusMessage.className = 'status-message status-success';
-                        
-                        // Atualiza visualmente (assume que funcionou)
-                        updateLedVisual(command);
-                        lastCommandTime = Date.now();
-                    } else {
-                        // Erro na API
-                        statusMessage.textContent = '❌ Erro: Verifique sua API Key ou limite de tempo';
-                        statusMessage.className = 'status-message status-error';
-                    }
-                    btnOn.disabled = false;
-                    btnOff.disabled = false;
-                }, 600);
-            } catch (error) {
-                // Erro de rede
-                setTimeout(() => {
-                    statusMessage.textContent = '❌ Erro de rede ao conectar com o ThingSpeak';
+        try {
+            const response = await fetch(url);
+            const data = await response.text();
+            const entryId = parseInt(data.trim());
+
+            setTimeout(() => {
+                if(entryId > 0) {
+                    // Sucesso!
+                    statusMessage.textContent = command === 1 
+                        ? '✅ LED LIGADO com sucesso!' 
+                        : '✅ LED DESLIGADO com sucesso!';
+                    statusMessage.className = 'status-message status-success';
+                    
+                    // Atualiza visual
+                    updateLedVisual(command);
+                    lastCommandTime = Date.now();
+                    
+                    // Aguarda e verifica estado real
+                    setTimeout(checkActualLedStatus, 2000);
+                } else if(entryId === 0) {
+                    statusMessage.textContent = '⚠️  Aguarde 15 segundos entre comandos';
+                    statusMessage.className = 'status-message status-waiting';
+                } else {
+                    statusMessage.textContent = '❌ Erro na API Key ou canal';
                     statusMessage.className = 'status-message status-error';
-                    console.error('Erro:', error);
-                    btnOn.disabled = false;
-                    btnOff.disabled = false;
-                }, 600);
-            }
-        }
-
-        // Opcional: Pode adicionar uma função para verificar o estado atual do LED
-        // lendo o Field 1 do ThingSpeak periodicamente
-        async function checkLedStatus() {
-            try {
-                const url = `https://api.thingspeak.com/channels/SEU_CHANNEL_ID/fields/${LED_STATUS_FIELD}/last.txt`;
-                const response = await fetch(url);
-                const data = await response.text();
-                const state = parseInt(data.trim());
-                
-                if(!isNaN(state) && (state === 0 || state === 1)) {
-                    updateLedVisual(state);
                 }
-            } catch (error) {
-                console.log('Não foi possível verificar o estado do LED');
-            }
+                btnOn.disabled = false;
+                btnOff.disabled = false;
+            }, 600);
+        } catch (error) {
+            setTimeout(() => {
+                statusMessage.textContent = '❌ Erro de rede';
+                statusMessage.className = 'status-message status-error';
+                btnOn.disabled = false;
+                btnOff.disabled = false;
+            }, 600);
         }
+    }
 
-        // Inicialização
-        document.addEventListener('DOMContentLoaded', function() {
-            // Verifica o estado inicial do LED (opcional)
-            // checkLedStatus();
+    // Verifica o estado REAL do LED no ESP32
+    async function checkActualLedStatus() {
+        try {
+            // Lê o Field 1 do canal
+            const url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/fields/1/last.txt`;
+            const response = await fetch(url);
+            const data = await response.text().trim();
+            const state = parseInt(data);
             
-            // Atualiza a cada 30 segundos (opcional)
-            // setInterval(checkLedStatus, 30000);
-            
-            statusMessage.textContent = '✅ Painel de controle pronto!';
-        });
-    </script>
+            if(!isNaN(state) && (state === 0 || state === 1)) {
+                updateLedVisual(state);
+                statusMessage.textContent += ` (Estado confirmado: ${state === 1 ? 'LIGADO' : 'DESLIGADO'})`;
+            }
+        } catch (error) {
+            console.log('Não foi possível verificar estado');
+        }
+    }
+
+    // Verifica estado inicial
+    async function initialize() {
+        statusMessage.textContent = '🔄 Conectando ao ThingSpeak...';
+        await checkActualLedStatus();
+        statusMessage.textContent = '✅ Painel pronto! Clique nos botões para controlar.';
+    }
+
+    // Inicializa
+    document.addEventListener('DOMContentLoaded', initialize);
+</script>
 </body>
 </html>
+
 
